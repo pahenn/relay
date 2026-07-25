@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bulwarkmail/webmail/refs/heads/main//public/branding/Bulwark_Logo_with_Lettering_White_and_Color.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/bulwarkmail/webmail/refs/heads/main//public/branding/Bulwark_Logo_with_Lettering_Dark_Color.svg" />
-  <img src="https://raw.githubusercontent.com/bulwarkmail/webmail/refs/heads/main//public/branding/Bulwark_Logo_with_Lettering_Dark_Color.svg" alt="Bulwark Webmail" width="280" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bulwarkmail/webmail/refs/heads/main/public/branding/Bulwark_Logo_with_Lettering_White_and_Color.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/bulwarkmail/webmail/refs/heads/main/public/branding/Bulwark_Logo_with_Lettering_Dark_Color.svg" />
+  <img src="https://raw.githubusercontent.com/bulwarkmail/webmail/refs/heads/main/public/branding/Bulwark_Logo_with_Lettering_Dark_Color.svg" alt="Bulwark Webmail" width="280" />
 </picture>
 
 </div>
@@ -27,8 +27,8 @@ mail content: only opaque FCM tokens, state-id hashes, and timing.
 | `POST` | `/api/push/register/web` | PWA stores a Web Push subscription (`endpoint` + `keys`) against an opaque `subscriptionId` |
 | `DELETE` | `/api/push/register/:id` | Tear down mapping (logout / uninstall) |
 | `GET` | `/api/push/verify/:id` | Poll for the JMAP `PushVerification` code |
-| `GET` | `/api/push/active/:id` | Liveness probe — `{ active }` if the subscription has forwarded a push (or was just registered); `404` if unknown. Clients use it to reap dead leftover subscriptions without touching live ones |
-| `POST` | `/api/push/jmap/:id` | JMAP server posts `PushVerification` or `StateChange` here — relay dispatches FCM or Web Push depending on the stored record |
+| `GET` | `/api/push/active/:id` | Liveness probe. Returns `{ active }` if the subscription has forwarded a push (or was just registered), `404` if unknown. Clients use it to reap dead leftover subscriptions without touching live ones |
+| `POST` | `/api/push/jmap/:id` | JMAP server posts `PushVerification` or `StateChange` here, and the relay dispatches FCM or Web Push depending on the stored record |
 | `GET` | `/api/push/vapid-public-key` | Returns the relay's VAPID public key so browsers can subscribe |
 | `GET` | `/api/health` | Liveness probe |
 
@@ -63,7 +63,7 @@ docker compose up -d
 | `PORT` | `3003` | HTTP listen port |
 | `HOST` | `0.0.0.0` | |
 | `PUSH_DATA_DIR` | `./data` | Where `subscriptions.json` and the FCM key live |
-| `FCM_SERVICE_ACCOUNT_JSON` | unset | Either the full JSON inline or an absolute path — falls back to `$PUSH_DATA_DIR/fcm-service-account.json` |
+| `FCM_SERVICE_ACCOUNT_JSON` | unset | Either the full JSON inline or an absolute path; falls back to `$PUSH_DATA_DIR/fcm-service-account.json` |
 | `VAPID_PUBLIC_KEY` | unset | Base64url-encoded P-256 public key for Web Push. Generate with `npx web-push generate-vapid-keys` |
 | `VAPID_PRIVATE_KEY` | unset | Matching private key. Web Push is disabled if either VAPID var is missing |
 | `VAPID_SUBJECT` | `mailto:postmaster@localhost` | `mailto:` or `https:` contact the push services can reach if the relay misbehaves (RFC 8292) |
