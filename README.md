@@ -28,7 +28,7 @@ mail content: only opaque FCM tokens, state-id hashes, and timing.
 | `DELETE` | `/api/push/register/:id` | Tear down mapping (logout / uninstall) |
 | `GET` | `/api/push/verify/:id` | Poll for the JMAP `PushVerification` code |
 | `GET` | `/api/push/active/:id` | Liveness probe. Returns `{ active }` if the subscription has forwarded a push (or was just registered), `404` if unknown. Clients use it to reap dead leftover subscriptions without touching live ones |
-| `POST` | `/api/push/jmap/:id` | JMAP server posts `PushVerification` or `StateChange` here, and the relay dispatches FCM or Web Push depending on the stored record |
+| `POST` | `/api/push/jmap/:id` | JMAP server posts `PushVerification`, `StateChange` or `EmailPush` (draft-ietf-jmap-emailpush) here, and the relay dispatches FCM or Web Push depending on the stored record. For `EmailPush` only the message ids are forwarded, never any other property the server included |
 | `GET` | `/api/push/vapid-public-key` | Returns the relay's VAPID public key so browsers can subscribe |
 | `GET` | `/api/health` | Liveness probe |
 

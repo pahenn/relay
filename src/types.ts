@@ -42,4 +42,26 @@ export interface StateChange {
   changed: Record<string, Record<string, string>>;
 }
 
-export type JmapPushBody = PushVerification | StateChange;
+// draft-ietf-jmap-emailpush: sent instead of a StateChange when the client
+// registered a per-account delivery filter on its PushSubscription. `emails`
+// holds whatever Email properties the client asked for - Bulwark clients ask
+// for ids only, and the relay forwards nothing but ids regardless.
+export interface EmailPush {
+  '@type': 'EmailPush';
+  accountId: string;
+  emails: Array<Record<string, unknown>>;
+  state?: string;
+}
+
+export type JmapPushBody = PushVerification | StateChange | EmailPush;
+
+// What the relay actually forwards to a device. `changed` is always present
+// so clients that only understand the state-change ping keep working; `kind`
+// and `emailIds` tell newer clients which messages were delivered.
+export interface ForwardPayload {
+  kind: 'jmap-state-change' | 'jmap-email-push';
+  accountLabel: string;
+  accountId: string;
+  emailIds: string[];
+  changed: Record<string, Record<string, string>>;
+}

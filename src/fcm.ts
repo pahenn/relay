@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { FcmSubscriptionRecord, StateChange } from './types.js';
+import type { FcmSubscriptionRecord, ForwardPayload } from './types.js';
 
 interface ServiceAccount {
   type: string;
@@ -90,12 +90,13 @@ export interface FcmSendResult {
 
 export async function sendFcmPush(
   record: FcmSubscriptionRecord,
-  change: StateChange,
+  payload: ForwardPayload,
 ): Promise<FcmSendResult> {
   const account = await loadServiceAccount();
   const accessToken = await mintAccessToken();
   // Data-only push so onMessageReceived always fires — the app enriches it
   // (sender/subject/avatar) via JMAP fetch before posting a notification.
+  // FCM data values must be strings, hence the JSON-encoded fields.
   const message = {
     message: {
       token: record.fcmToken,
@@ -103,9 +104,11 @@ export async function sendFcmPush(
         priority: 'HIGH',
       },
       data: {
-        kind: 'jmap-state-change',
-        accountLabel: record.accountLabel ?? '',
-        changed: JSON.stringify(change.changed ?? {}),
+        kind: payload.kind,
+        accountLabel: payload.accountLabel,
+        accountId: payload.accountId,
+        emailIds: JSON.stringify(payload.emailIds),
+        changed: JSON.stringify(payload.changed),
       },
     },
   };

@@ -4,6 +4,7 @@ import { logger } from './logger.js';
 import { subscriptionStore } from './store.js';
 import { sendFcmPush } from './fcm.js';
 import { getVapidPublicKey, sendWebPush } from './webpush.js';
+import { isForwardableBody, toForwardPayload } from './payload.js';
 import {
   isValidFcmToken,
   isValidSubscriptionId,
@@ -11,6 +12,7 @@ import {
 } from './validation.js';
 import type {
   FcmSubscriptionRecord,
+  ForwardPayload,
   JmapPushBody,
   SubscriptionRecord,
   WebSubscriptionRecord,
@@ -291,9 +293,12 @@ async function handleJmap(
     return sendJson(res, 200, { ok: true });
   }
 
-  if (body['@type'] === 'StateChange') {
-    pushesReceived.inc({ type: 'StateChange' });
-    const result = await dispatchStateChange(record, body);
+  // StateChange: the classic per-type ping. EmailPush: the server applied the
+  // client's delivery filter (draft-ietf-jmap-emailpush) and lists the
+  // messages that passed - both become the same content-blind device payload.
+  if (isForwardableBody(body)) {
+    pushesReceived.inc({ type: body['@type'] });
+    const result = await dispatch(record, toForwardPayload(body, record.accountLabel));
     let outcome: 'ok' | 'unregistered' | 'http-4xx' | 'http-5xx' | 'fail';
     if (result.unregistered) outcome = 'unregistered';
     else if (result.ok) outcome = 'ok';
@@ -317,18 +322,18 @@ async function handleJmap(
   return sendJson(res, 400, { error: 'Unsupported JMAP push type' });
 }
 
-async function dispatchStateChange(
+async function dispatch(
   record: SubscriptionRecord,
-  body: Extract<JmapPushBody, { '@type': 'StateChange' }>,
+  payload: ForwardPayload,
 ): Promise<{ ok: boolean; status: number; unregistered: boolean }> {
   if (record.kind === 'fcm') {
     const timer = fcmDurationSeconds.startTimer();
-    const result = await sendFcmPush(record, body);
+    const result = await sendFcmPush(record, payload);
     timer();
     return result;
   }
   const timer = webPushDurationSeconds.startTimer();
-  const result = await sendWebPush(record, body);
+  const result = await sendWebPush(record, payload);
   timer();
   return result;
 }

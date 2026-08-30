@@ -1,6 +1,6 @@
 import webpush from 'web-push';
 import { logger } from './logger.js';
-import type { StateChange, WebSubscriptionRecord } from './types.js';
+import type { ForwardPayload, WebSubscriptionRecord } from './types.js';
 
 let configured = false;
 let publicKey: string | null = null;
@@ -39,23 +39,18 @@ export interface WebPushSendResult {
 
 export async function sendWebPush(
   record: WebSubscriptionRecord,
-  change: StateChange,
+  payload: ForwardPayload,
 ): Promise<WebPushSendResult> {
   if (!ensureConfigured()) {
     return { ok: false, status: 0, unregistered: false };
   }
 
-  // Mirror the FCM payload shape: just a wake-up ping. The service worker
-  // turns this into an enriched system notification by JMAP-fetching the
-  // newest unread email itself - so the relay never sees mail content.
-  const payload = JSON.stringify({
-    kind: 'jmap-state-change',
-    accountLabel: record.accountLabel ?? '',
-    changed: change.changed ?? {},
-  });
-
+  // Mirror the FCM payload shape: a wake-up ping plus, at most, the ids of the
+  // delivered messages. The service worker turns this into an enriched system
+  // notification by JMAP-fetching the email itself - so the relay never sees
+  // mail content.
   try {
-    const res = await webpush.sendNotification(record.webPush, payload, {
+    const res = await webpush.sendNotification(record.webPush, JSON.stringify(payload), {
       TTL: 60 * 60, // seconds — drop if the device is offline for an hour
       urgency: 'high',
     });
