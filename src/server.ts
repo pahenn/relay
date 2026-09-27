@@ -4,10 +4,13 @@ import { logger } from './logger.js';
 import { subscriptionStore } from './store.js';
 import { sendFcmPush } from './fcm.js';
 import { getVapidPublicKey, sendWebPush } from './webpush.js';
+import { sendUnifiedPush } from './unifiedpush.js';
 import { isForwardableBody, toForwardPayload } from './payload.js';
 import {
   isValidFcmToken,
   isValidSubscriptionId,
+  isValidUnifiedPushEndpoint,
+  isValidUnifiedPushKeys,
   isValidWebPushSubscription,
 } from './validation.js';
 import type {
@@ -15,6 +18,7 @@ import type {
   ForwardPayload,
   JmapPushBody,
   SubscriptionRecord,
+  UnifiedPushSubscriptionRecord,
   WebSubscriptionRecord,
 } from './types.js';
 import {
@@ -28,6 +32,7 @@ import {
   pushesForwarded,
   fcmDurationSeconds,
   webPushDurationSeconds,
+  upDurationSeconds,
 } from './metrics.js';
 
 const PORT = Number(process.env.PORT ?? 3003);
@@ -209,6 +214,54 @@ async function handleRegisterWeb(
   return sendJson(res, 200, { ok: true });
 }
 
+// UnifiedPush (mobile app without Google Play services). No VAPID gate like
+// the Web Push route: distributors accept pushes without VAPID, and legacy
+// ones without keys get a plain POST anyway.
+async function handleRegisterUnifiedPush(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  const body = (await readJson(req)) as
+    | {
+        subscriptionId?: unknown;
+        endpoint?: unknown;
+        keys?: unknown;
+        accountLabel?: unknown;
+      }
+    | null
+    | undefined;
+  if (!body || typeof body !== 'object') {
+    return sendJson(res, 400, { error: 'Invalid JSON' });
+  }
+  const { subscriptionId, endpoint, keys, accountLabel } = body;
+  if (!isValidSubscriptionId(subscriptionId)) {
+    return sendJson(res, 400, { error: 'Invalid subscriptionId' });
+  }
+  if (!isValidUnifiedPushEndpoint(endpoint)) {
+    return sendJson(res, 400, { error: 'Invalid endpoint' });
+  }
+  if (keys != null && !isValidUnifiedPushKeys(keys)) {
+    return sendJson(res, 400, { error: 'Invalid keys' });
+  }
+
+  const existing = await subscriptionStore.get(subscriptionId);
+  const record: UnifiedPushSubscriptionRecord = {
+    kind: 'up',
+    endpoint,
+    keys: keys ?? null,
+    // See handleRegister for why we always reset this.
+    verificationCode: null,
+    createdAt: existing?.createdAt ?? Date.now(),
+    lastPushAt: existing?.lastPushAt ?? null,
+    accountLabel:
+      typeof accountLabel === 'string' ? accountLabel.slice(0, 120) : undefined,
+  };
+  await subscriptionStore.put(subscriptionId, record);
+  subscriptionsRegistered.inc({ transport: 'up' });
+  await refreshActiveGauge();
+  return sendJson(res, 200, { ok: true });
+}
+
 async function handleUnregister(
   id: string,
   res: http.ServerResponse,
@@ -310,10 +363,13 @@ async function handleJmap(
     await subscriptionStore.put(id, record);
     if (result.unregistered) {
       await subscriptionStore.delete(id);
-      subscriptionsUnregistered.inc({
-        reason: record.kind === 'fcm' ? 'fcm-unregistered' : 'webpush-gone',
-        transport: record.kind,
-      });
+      const reason =
+        record.kind === 'fcm'
+          ? 'fcm-unregistered'
+          : record.kind === 'up'
+            ? 'unifiedpush-gone'
+            : 'webpush-gone';
+      subscriptionsUnregistered.inc({ reason, transport: record.kind });
       await refreshActiveGauge();
     }
     return sendJson(res, 200, { ok: result.ok });
@@ -332,6 +388,12 @@ async function dispatch(
     timer();
     return result;
   }
+  if (record.kind === 'up') {
+    const timer = upDurationSeconds.startTimer();
+    const result = await sendUnifiedPush(record, payload);
+    timer();
+    return result;
+  }
   const timer = webPushDurationSeconds.startTimer();
   const result = await sendWebPush(record, payload);
   timer();
@@ -345,6 +407,7 @@ async function refreshActiveGauge(): Promise<void> {
   const counts = await subscriptionStore.sizeByKind();
   subscriptionsActive.set({ transport: 'fcm' }, counts.fcm);
   subscriptionsActive.set({ transport: 'web' }, counts.web);
+  subscriptionsActive.set({ transport: 'up' }, counts.up);
 }
 
 function normalizeRoute(method: string, path: string): string {
@@ -354,6 +417,7 @@ function normalizeRoute(method: string, path: string): string {
   if (path === '/api/push/vapid-public-key') return '/api/push/vapid-public-key';
   if (method === 'POST' && path === '/api/push/register') return '/api/push/register';
   if (method === 'POST' && path === '/api/push/register/web') return '/api/push/register/web';
+  if (method === 'POST' && path === '/api/push/register/unifiedpush') return '/api/push/register/unifiedpush';
   if (/^\/api\/push\/register\/[^/]+$/.test(path)) return '/api/push/register/:id';
   if (/^\/api\/push\/verify\/[^/]+$/.test(path)) return '/api/push/verify/:id';
   if (/^\/api\/push\/active\/[^/]+$/.test(path)) return '/api/push/active/:id';
@@ -420,6 +484,10 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'POST' && path === '/api/push/register/web') {
       return await handleRegisterWeb(req, res);
+    }
+
+    if (method === 'POST' && path === '/api/push/register/unifiedpush') {
+      return await handleRegisterUnifiedPush(req, res);
     }
 
     if (method === 'GET' && path === '/api/push/vapid-public-key') {

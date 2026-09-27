@@ -72,3 +72,10 @@ export const webPushDurationSeconds = new Histogram({
   buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
   registers: [registry],
 });
+
+export const upDurationSeconds = new Histogram({
+  name: 'relay_unifiedpush_send_duration_seconds',
+  help: 'Latency of delivery to a UnifiedPush distributor endpoint',
+  buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [registry],
+});

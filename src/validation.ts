@@ -13,6 +13,34 @@ export function isValidFcmToken(value: unknown): value is string {
   );
 }
 
+// UnifiedPush endpoints point at whatever distributor server the user chose
+// (ntfy.sh, a self-hosted ntfy, NextPush, ...) so unlike Web Push there is no
+// short allowlist of origins - but they must still be https and sanely sized.
+export function isValidUnifiedPushEndpoint(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= 10 &&
+    value.length <= 2048 &&
+    /^https:\/\//i.test(value)
+  );
+}
+
+// Web Push keys as delivered by the UnifiedPush connector; same shape and
+// limits as a browser subscription's `keys`.
+export function isValidUnifiedPushKeys(
+  value: unknown,
+): value is { p256dh: string; auth: string } {
+  if (!value || typeof value !== 'object') return false;
+  const keys = value as Record<string, unknown>;
+  if (typeof keys.p256dh !== 'string' || keys.p256dh.length < 64 || keys.p256dh.length > 256) {
+    return false;
+  }
+  if (typeof keys.auth !== 'string' || keys.auth.length < 16 || keys.auth.length > 64) {
+    return false;
+  }
+  return true;
+}
+
 // Browser PushSubscription endpoints come from the major push services
 // (FCM, Mozilla autopush, Apple, WindowsNotificationServices). Allow only
 // https URLs and cap the length so a malicious caller can't bloat the store.

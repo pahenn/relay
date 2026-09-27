@@ -11,8 +11,9 @@
 # Bulwark Relay
 
 Push notification relay for Bulwark Webmail. Terminates JMAP `PushSubscription`
-pushes from the user's mail server and forwards them to Firebase Cloud
-Messaging so the mobile app wakes up and fetches new mail over its own JMAP
+pushes from the user's mail server and forwards them as Firebase Cloud
+Messaging, Web Push or [UnifiedPush](https://unifiedpush.org) pings so the
+mobile app (or PWA) wakes up and fetches new mail over its own JMAP
 connection.
 
 Designed so self-hosters don't need their own Firebase project, a single
@@ -25,6 +26,7 @@ mail content: only opaque FCM tokens, state-id hashes, and timing.
 | --- | --- | --- |
 | `POST` | `/api/push/register` | Mobile app stores its FCM token against an opaque `subscriptionId` |
 | `POST` | `/api/push/register/web` | PWA stores a Web Push subscription (`endpoint` + `keys`) against an opaque `subscriptionId` |
+| `POST` | `/api/push/register/unifiedpush` | Mobile app stores a [UnifiedPush](https://unifiedpush.org) endpoint (`endpoint` + optional Web Push `keys`) against an opaque `subscriptionId`. Delivery is encrypted Web Push when keys are present (connector >= 3.0), a plain POST of the ping otherwise. Works without VAPID configured - distributors don't require it |
 | `DELETE` | `/api/push/register/:id` | Tear down mapping (logout / uninstall) |
 | `GET` | `/api/push/verify/:id` | Poll for the JMAP `PushVerification` code |
 | `GET` | `/api/push/active/:id` | Liveness probe. Returns `{ active }` if the subscription has forwarded a push (or was just registered), `404` if unknown. Clients use it to reap dead leftover subscriptions without touching live ones |
@@ -34,8 +36,9 @@ mail content: only opaque FCM tokens, state-id hashes, and timing.
 
 ## What it stores
 
-Per `subscriptionId`: either an FCM token (mobile) or a Web Push subscription
-(`endpoint` + `p256dh`/`auth` keys for the PWA), an optional one-shot
+Per `subscriptionId`: an FCM token (mobile), a Web Push subscription
+(`endpoint` + `p256dh`/`auth` keys for the PWA), or a UnifiedPush endpoint
+(mobile without Google Play services), an optional one-shot
 verification code, an optional free-form `accountLabel` (max 120 chars), and
 timestamps. No user identity, no server URL, no mail content. Subscriptions
 older than 90 days without traffic are evicted automatically.

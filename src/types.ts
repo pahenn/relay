@@ -1,9 +1,11 @@
-// Records exist in one of two flavours: FCM (mobile app) or Web Push (PWA in
-// the browser). Older on-disk records predate the discriminator and only have
-// `fcmToken` - the loader fills in `kind: 'fcm'` for those.
+// Records exist in one of three flavours: FCM (mobile app), Web Push (PWA in
+// the browser) or UnifiedPush (mobile app without Google Play services).
+// Older on-disk records predate the discriminator and only have `fcmToken` -
+// the loader fills in `kind: 'fcm'` for those.
 export type SubscriptionRecord =
   | FcmSubscriptionRecord
-  | WebSubscriptionRecord;
+  | WebSubscriptionRecord
+  | UnifiedPushSubscriptionRecord;
 
 interface BaseSubscriptionRecord {
   verificationCode: string | null;
@@ -20,6 +22,17 @@ export interface FcmSubscriptionRecord extends BaseSubscriptionRecord {
 export interface WebSubscriptionRecord extends BaseSubscriptionRecord {
   kind: 'web';
   webPush: WebPushSubscription;
+}
+
+// UnifiedPush (https://unifiedpush.org): the distributor app on the device
+// hands the client an RFC 8030 push endpoint. Connectors >= 3.0 also provide
+// RFC 8291 Web Push keys, so delivery is the same encrypted Web Push as the
+// PWA path; `keys: null` marks a legacy distributor that only understands a
+// plain POST of the payload bytes.
+export interface UnifiedPushSubscriptionRecord extends BaseSubscriptionRecord {
+  kind: 'up';
+  endpoint: string;
+  keys: { p256dh: string; auth: string } | null;
 }
 
 // Mirror of the browser's PushSubscriptionJSON: https://w3c.github.io/push-api
